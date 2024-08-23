@@ -383,6 +383,50 @@ class KerasLinear(TFModelV2):
 ModelCatalog.register_custom_model(KerasLinear.custom_name, KerasLinear)
 
 
+class Octopus(TFModelV2):
+    """A single linear layer model without biases."""
+
+    custom_name = "octopus"
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
+
+        self.MASK_NAME = "action_mask"
+        mask = obs_space.original_space.spaces[self.MASK_NAME]
+        mask_input = tf.keras.layers.Input(shape=mask.shape, name=self.MASK_NAME)
+
+        self.inputs = [
+            tf.keras.layers.Input(shape=(1,), name="fixed_input"),
+            mask_input,
+        ]
+
+        logits = tf.keras.layers.Dense(self.num_outputs, activation=None, use_bias=False, name="logits")(self.inputs[0])
+        logits = apply_logit_mask(logits, mask_input)
+
+        values = tf.keras.layers.Dense(1, activation=None, use_bias=False, name="values")(self.inputs[0])
+
+        self.base_model = tf.keras.Model(self.inputs, [logits, values])
+        self.register_variables(self.base_model.variables)
+
+    def forward(self, input_dict, state, seq_lens):
+
+        batch_size = tf.shape(input_dict["obs_flat"])[0]
+        single_one = tf.ones((batch_size, 1))
+
+        model_out, self._value_out = self.base_model(
+            [
+                single_one,
+                input_dict["obs"][self.MASK_NAME]
+            ]
+        )
+        return model_out, state
+
+    def value_function(self):
+        return tf.reshape(self._value_out, [-1])
+
+ModelCatalog.register_custom_model(Octopus.custom_name, Octopus)
+
+
 class RandomAction(TFModelV2):
     """
     A "random" model to sample actions from an action space at random.

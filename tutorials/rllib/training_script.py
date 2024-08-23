@@ -220,6 +220,18 @@ def maybe_sync_saez_buffer(trainer_obj, result_dict, run_configuration):
     if sync_saez:
         remote.accumulate_and_broadcast_saez_buffers(trainer_obj)
 
+from collections import defaultdict
+def get_overall_endowment_info(infos):
+
+    summed = defaultdict(float)
+    for d in infos:
+        for key, value in d.items():
+            common_key = key.split('/')[-1]  
+            summed[f"mean/{common_key}"] += value
+
+    meaned = {key: value / len(infos) for key, value in summed.items()}
+    return meaned
+    
 
 def maybe_store_dense_log(
     trainer_obj, result_dict, dense_log_freq, dense_log_directory
@@ -242,12 +254,15 @@ def maybe_store_dense_log(
 
             try:
                 """ hard-coded for the 30 envs as was getting some random env_ids = -2 """
+                all_endowment_infos = []
                 for env_id in range(30):
                     tax_rates = all_key_metrics[env_id]["tax_rates"]
                     for datum in tax_rates:
                         wandb.log(datum)
                     endowment_info = all_key_metrics[env_id]["endowment"]
+                    all_endowment_infos.append(endowment_info)
                     wandb.log(endowment_info)
+                wandb.log(get_overall_endowment_info(all_endowment_infos))
             except Exception:
                 """ terrible practice but I absolutely do not want wandb issues crashing these runs. """
                 pass

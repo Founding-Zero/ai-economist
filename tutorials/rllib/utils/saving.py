@@ -94,7 +94,7 @@ from ai_economist.foundation.scenarios.utils.rewards import coin_eq_times_produc
 def extract_from_log(env_id, episode_number, log):
     tax_rates = [
         {
-            f"game_{env_id}/env_global_step": 1000 * episode_number + i,
+            f"game_{env_id}/env_global_step": 1000 * (episode_number-1) + i,
             f"game_{env_id}/episode": episode_number,
             f"game_{env_id}/episode_step": i,
             **{f"game_{env_id}/tax_rate_{bracket[-3:]}": rate for bracket, rate in x["p"].items()},
@@ -106,14 +106,20 @@ def extract_from_log(env_id, episode_number, log):
         endowments = np.array(list(log["endowments"][-1].values()))
     except IndexError:
         raise Exception(f"{env_id} - {log['endowments']}") from ImportError
+    prod = social_metrics.get_productivity(endowments)
+    eq = social_metrics.get_equality(endowments)
     endowment_info = {
+        f"game_{env_id}/env_global_step": 1000 * episode_number - 1,
+        f"game_{env_id}/episode": episode_number,
+        f"game_{env_id}/episode_step": 999,
         **{
             f"game_{env_id}/agent_{idx}_final_endowment": final_endowment
             for idx, final_endowment in log["endowments"][-1].items()
         },
-        f"game_{env_id}/productivity_(undivided)": social_metrics.get_productivity(endowments),
-        f"game_{env_id}/equality": social_metrics.get_equality(endowments),
+        f"game_{env_id}/productivity_(undivided)": prod,
+        f"game_{env_id}/equality": eq,
         f"game_{env_id}/coin_eq_times_productivity": coin_eq_times_productivity(endowments, 1),
+        f"game_{env_id}/old_eq_times_prod_(no_divide_prod)": prod*eq,
     }
     key_metrics = {"tax_rates": tax_rates, "endowment": endowment_info}
     return key_metrics
