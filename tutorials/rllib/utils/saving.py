@@ -19,11 +19,7 @@ logger = logging.getLogger("utils")
 logger.setLevel(logging.DEBUG)
 
 
-sys.path.append(
-    os.path.abspath(
-        os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../../..")
-    )
-)
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(sys.modules[__name__].__file__), "../../..")))
 
 
 def fill_out_run_dir(run_dir):
@@ -90,18 +86,55 @@ def make_run_dir_path(args, log_group):
     return run_dir, debug_dir, dense_log_dir, ckpt_dir, restore
 
 
-def write_dense_logs(trainer, log_directory, suffix=""):
+import numpy as np
+from ai_economist.foundation.scenarios.utils import social_metrics
+from ai_economist.foundation.scenarios.utils.rewards import coin_eq_times_productivity
+
+
+def extract_from_log(env_id, episode_number, log):
+    tax_rates = [
+        {
+            f"game_{env_id}/env_global_step": 1000 * episode_number + i,
+            f"game_{env_id}/episode": episode_number,
+            f"game_{env_id}/episode_step": i,
+            **{f"game_{env_id}/tax_rate_{bracket[-3:]}": rate for bracket, rate in x["p"].items()},
+        }
+        for i, x in enumerate(log["actions"])
+        if len(x["p"]) > 0
+    ]
+    try:
+        endowments = np.array(list(log["endowments"][-1].values()))
+    except IndexError:
+        raise Exception(f"{env_id} - {log['endowments']}") from ImportError
+    endowment_info = {
+        **{
+            f"game_{env_id}/agent_{idx}_final_endowment": final_endowment
+            for idx, final_endowment in log["endowments"][-1].items()
+        },
+        f"game_{env_id}/productivity_(undivided)": social_metrics.get_productivity(endowments),
+        f"game_{env_id}/equality": social_metrics.get_equality(endowments),
+        f"game_{env_id}/coin_eq_times_productivity": coin_eq_times_productivity(endowments, 1),
+    }
+    key_metrics = {"tax_rates": tax_rates, "endowment": endowment_info}
+    return key_metrics
+
+
+def write_dense_logs(trainer, log_directory, individual_env_ep_number, suffix=""):
     def save_log(env_wrapper):
         if 0 <= env_wrapper.env_id < 4:
             my_path = os.path.join(
                 log_directory,
-                "env{:03d}{}.lz4".format(
-                    env_wrapper.env_id, "." + suffix if suffix != "" else ""
-                ),
+                "env{:03d}{}.lz4".format(env_wrapper.env_id, "." + suffix if suffix != "" else ""),
             )
             foundation.utils.save_episode_log(env_wrapper.env, my_path)
 
-    remote_env_fun(trainer, save_log)
+        if 0 <= env_wrapper.env_id < 30:
+            key_metrics = extract_from_log(
+                env_wrapper.env_id, individual_env_ep_number, env_wrapper.env.previous_episode_dense_log
+            )
+            return key_metrics
+
+    return remote_env_fun(trainer, save_log)
 
 
 def save_tf_model_weights(trainer, ckpt_dir, global_step, suffix=""):
@@ -116,9 +149,7 @@ def save_tf_model_weights(trainer, ckpt_dir, global_step, suffix=""):
     else:
         raise NotImplementedError
 
-    fn = os.path.join(
-        ckpt_dir, "{}.tf.weights.global-step-{}".format(suffix, global_step)
-    )
+    fn = os.path.join(ckpt_dir, "{}.tf.weights.global-step-{}".format(suffix, global_step))
     with open(fn, "wb") as f:
         pickle.dump(w, f)
 
@@ -145,9 +176,7 @@ def save_snapshot(trainer, ckpt_dir, suffix=""):
     filepath = trainer.save(ckpt_dir)
     filepath_metadata = filepath + ".tune_metadata"
     # Copy this to a standardized name (to only keep the latest)
-    latest_filepath = os.path.join(
-        ckpt_dir, "latest_checkpoint{}.pkl".format("." + suffix if suffix != "" else "")
-    )
+    latest_filepath = os.path.join(ckpt_dir, "latest_checkpoint{}.pkl".format("." + suffix if suffix != "" else ""))
     latest_filepath_metadata = latest_filepath + ".tune_metadata"
     shutil.copy(filepath, latest_filepath)
     shutil.copy(filepath_metadata, latest_filepath_metadata)
@@ -186,8 +215,7 @@ def load_snapshot(trainer, run_dir, ckpt=None, suffix="", load_latest=False):
                 )
             else:
                 logger.info(
-                    "load_snapshot -> loading %s FAILED,"
-                    " skipping restoring cpkt for %s %s",
+                    "load_snapshot -> loading %s FAILED," " skipping restoring cpkt for %s %s",
                     ckpt_fp,
                     suffix,
                     trainer,
@@ -198,13 +226,10 @@ def load_snapshot(trainer, run_dir, ckpt=None, suffix="", load_latest=False):
         if os.path.isfile(ckpt):
             trainer.restore(ckpt)
             loaded_ckpt_success = True
-            logger.info(
-                "load_snapshot -> loading %s SUCCESS for %s %s", ckpt, suffix, trainer
-            )
+            logger.info("load_snapshot -> loading %s SUCCESS for %s %s", ckpt, suffix, trainer)
         else:
             logger.info(
-                "load_snapshot -> loading %s FAILED,"
-                " skipping restoring cpkt for %s %s",
+                "load_snapshot -> loading %s FAILED," " skipping restoring cpkt for %s %s",
                 ckpt,
                 suffix,
                 trainer,
@@ -215,9 +240,7 @@ def load_snapshot(trainer, run_dir, ckpt=None, suffix="", load_latest=False):
     # Also load snapshots of each environment object
     remote_env_fun(
         trainer,
-        lambda env_wrapper: env_wrapper.load_game_object(
-            os.path.join(run_dir, "ckpts")
-        ),
+        lambda env_wrapper: env_wrapper.load_game_object(os.path.join(run_dir, "ckpts")),
     )
 
     return loaded_ckpt_success

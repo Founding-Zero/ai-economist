@@ -11,13 +11,13 @@ import sys
 import time
 
 import ray
+import wandb
 from utils import remote, saving
 import tf_models
 import yaml
 from env_wrapper import RLlibEnvWrapper
 from ray.rllib.agents.ppo import PPOTrainer
 from ray.tune.logger import NoopLogger, pretty_print
-import wandb
 
 ray.init(log_to_driver=False)
 
@@ -42,8 +42,6 @@ def process_args():
 
     with open(config_path, "r") as f:
         run_configuration = yaml.safe_load(f)
-
-    wandb.init(project="GTB", config=run_configuration)
 
     return run_directory, run_configuration
 
@@ -227,17 +225,33 @@ def maybe_store_dense_log(
     trainer_obj, result_dict, dense_log_freq, dense_log_directory
 ):
     if result_dict["episodes_this_iter"] > 0 and dense_log_freq > 0:
+        """ Episodes this iter seems to always be 30.
+        episodes_total goes up in 30s, so episodes_per_replica is the episodes count
+        of each parallel game I think. """
         episodes_per_replica = (
             result_dict["episodes_total"] // result_dict["episodes_this_iter"]
         )
         if episodes_per_replica == 1 or (episodes_per_replica % dense_log_freq) == 0:
             log_dir = os.path.join(
                 dense_log_directory,
-                "logs_{:016d}".format(result_dict["timesteps_total"]),
+                "logs_{:016d}_ep_per_replica_{:016d}".format(result_dict["timesteps_total"], episodes_per_replica),
             )
             if not os.path.isdir(log_dir):
                 os.makedirs(log_dir)
-            saving.write_dense_logs(trainer_obj, log_dir)
+            all_key_metrics = saving.write_dense_logs(trainer_obj, log_dir, episodes_per_replica)
+
+            try:
+                """ hard-coded for the 30 envs as was getting some random env_ids = -2 """
+                for env_id in range(30):
+                    tax_rates = all_key_metrics[env_id]["tax_rates"]
+                    for datum in tax_rates:
+                        wandb.log(datum)
+                    endowment_info = all_key_metrics[env_id]["endowment"]
+                    wandb.log(endowment_info)
+            except Exception:
+                """ terrible practice but I absolutely do not want wandb issues crashing these runs. """
+                pass
+
             logger.info(">> Wrote dense logs to: %s", log_dir)
 
 
@@ -266,55 +280,6 @@ def maybe_save(trainer_obj, result_dict, ckpt_freq, ckpt_directory, trainer_step
     return trainer_step_last_ckpt
 
 
-def log_useful_quantities_to_wandb(result):
-    # Extract and log scalar metrics
-    scalar_metrics = {
-        "episode_reward_max": result["episode_reward_max"],
-        "episode_reward_min": result["episode_reward_min"],
-        "episode_reward_mean": result["episode_reward_mean"],
-        "episode_len_mean": result["episode_len_mean"],
-        "episodes_this_iter": result["episodes_this_iter"],
-        "timesteps_this_iter": result["timesteps_this_iter"],
-        "timesteps_total": result["timesteps_total"],
-        "episodes_total": result["episodes_total"],
-        "training_iteration": result["training_iteration"],
-        "time_this_iter_s": result["time_this_iter_s"],
-        "time_total_s": result["time_total_s"],
-    }
-
-    # Extract and log policy rewards
-    for policy in result["policy_reward_mean"]:
-        scalar_metrics[f"{policy}_reward_min"] = result["policy_reward_min"][policy]
-        scalar_metrics[f"{policy}_reward_max"] = result["policy_reward_max"][policy]
-        scalar_metrics[f"{policy}_reward_mean"] = result["policy_reward_mean"][policy]
-
-    # Extract and log sampler performance metrics
-    for key, value in result["sampler_perf"].items():
-        scalar_metrics[f"sampler_perf_{key}"] = value
-
-    # Extract and log training info
-    info = result["info"]
-    scalar_metrics.update({
-        "num_steps_trained": info["num_steps_trained"],
-        "num_steps_sampled": info["num_steps_sampled"],
-        "sample_time_ms": info["sample_time_ms"],
-        "load_time_ms": info["load_time_ms"],
-        "grad_time_ms": info["grad_time_ms"],
-        "update_time_ms": info["update_time_ms"],
-    })
-
-    # Extract and log performance metrics
-    for key, value in result["perf"].items():
-        scalar_metrics[f"perf_{key}"] = value
-
-    # Log all scalar metrics to wandb
-    wandb.log(scalar_metrics)
-
-    # Log histograms
-    for hist_name, hist_data in result["hist_stats"].items():
-        wandb.log({f"histogram/{hist_name}": wandb.Histogram(hist_data)})
-
-
 if __name__ == "__main__":
 
     # ===================
@@ -326,6 +291,8 @@ if __name__ == "__main__":
 
     # Create a trainer object
     trainer = build_trainer(run_config)
+
+    wandb.init(project="GTB")
 
     # Set up directories for logging and saving. Restore if this has already been
     # done (indicating that we're restarting a crashed run). Or, if appropriate,
@@ -350,8 +317,6 @@ if __name__ == "__main__":
         # Training
         result = trainer.train()
 
-        log_useful_quantities_to_wandb(result)
-
         # === Counters++ ===
         num_parallel_episodes_done = result["episodes_total"]
         global_step = result["timesteps_total"]
@@ -368,6 +333,29 @@ if __name__ == "__main__":
 
         if curr_iter == 1 or result["episodes_this_iter"] > 0:
             logger.info(pretty_print(result))
+
+        """ Wandb logging. """
+        scalar_metrics = {
+            "episode_reward_max": result["episode_reward_max"],
+            "episode_reward_min": result["episode_reward_min"],
+            "episode_reward_mean": result["episode_reward_mean"],
+            "episode_len_mean": result["episode_len_mean"],
+            "episodes_this_iter": result["episodes_this_iter"],
+            "timesteps_this_iter": result["timesteps_this_iter"],
+            "timesteps_total": result["timesteps_total"],
+            "episodes_total": result["episodes_total"],
+            "training_iteration": result["training_iteration"],
+            "time_this_iter_s": result["time_this_iter_s"],
+            "time_total_s": result["time_total_s"],
+        }
+        for policy in result["policy_reward_mean"]:
+            scalar_metrics[f"{policy}_reward_min"] = result["policy_reward_min"][policy]
+            scalar_metrics[f"{policy}_reward_max"] = result["policy_reward_max"][policy]
+            scalar_metrics[f"{policy}_reward_mean"] = result["policy_reward_mean"][policy]
+        wandb.log(scalar_metrics)
+        for hist_name, hist_data in result["hist_stats"].items():
+            wandb.log({f"histogram/{hist_name}": wandb.Histogram(hist_data)})
+        """ End wandb logging. """
 
         # === Saez logic ===
         maybe_sync_saez_buffer(trainer, result, run_config)
@@ -387,5 +375,4 @@ if __name__ == "__main__":
     saving.save_tf_model_weights(trainer, ckpt_dir, global_step, suffix="planner")
     logger.info("Final snapshot saved! All done.")
 
-    wandb.finish()
     ray.shutdown()  # shutdown Ray after use
