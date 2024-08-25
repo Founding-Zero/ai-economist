@@ -450,6 +450,7 @@ class FixedObsKerasConvLSTM(RecurrentTFModelV2):
 
             # Apply convolution to the spatial inputs
             if use_conv:
+                raise NotImplementedError
                 map_embedding = tf.keras.layers.Embedding(
                     input_emb_vocab, emb_dim, name="embedding" + tag
                 )
