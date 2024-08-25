@@ -98,7 +98,7 @@ planner_policy:
   lr: 0.0001
   lr_schedule: null
   model:
-    custom_model: keras_conv_lstm
+    custom_model: fixed_obs_keras_conv_lstm
     custom_options:
       fc_dim: 256
       idx_emb_dim: 4
