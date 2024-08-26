@@ -646,6 +646,54 @@ class KerasLinear(TFModelV2):
 ModelCatalog.register_custom_model(KerasLinear.custom_name, KerasLinear)
 
 
+class OneHotTaxPeriod(TFModelV2):
+    """A linear (feed-forward) model."""
+
+    custom_name = "one_hot_tax_period"
+
+    def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
+        self.MASK_NAME = "action_mask"
+        mask = obs_space.original_space.spaces[self.MASK_NAME]
+        mask_input = tf.keras.layers.Input(shape=mask.shape, name=self.MASK_NAME)
+
+        self.inputs = [
+            tf.keras.layers.Input(
+                shape=(10,), name="tax_period_one_hot"
+            ),
+            mask_input,
+        ]
+
+        logits = tf.keras.layers.Dense(
+            self.num_outputs, activation=tf.keras.activations.linear, name="logits"
+        )(self.inputs[0])
+        logits = apply_logit_mask(logits, mask_input)
+
+        # Value function is linear
+        values = tf.keras.layers.Dense(
+            1, activation=tf.keras.activations.linear, name="values"
+        )(self.inputs[0])
+
+        self.base_model = tf.keras.Model(self.inputs, [logits, values])
+        self.register_variables(self.base_model.variables)
+
+    def forward(self, input_dict, state, seq_lens):
+        unrounded_period = input_dict["obs"]["time"] * 10
+        tax_period = tf.cast(tf.math.floor(unrounded_period), tf.int32)
+        tax_period_one_hot = tf.one_hot(tax_period, depth=10)
+
+        model_out, self._value_out = self.base_model(
+            [tax_period_one_hot, input_dict["obs"][self.MASK_NAME]]
+        )
+        return model_out, state
+
+    def value_function(self):
+        return tf.reshape(self._value_out, [-1])
+
+
+ModelCatalog.register_custom_model(OneHotTaxPeriod.custom_name, OneHotTaxPeriod)
+
+
 class Octopus(TFModelV2):
     """A single linear layer model without biases."""
 
