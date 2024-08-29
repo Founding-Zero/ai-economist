@@ -646,10 +646,10 @@ class KerasLinear(TFModelV2):
 ModelCatalog.register_custom_model(KerasLinear.custom_name, KerasLinear)
 
 
-class OneHotTaxPeriod(TFModelV2):
+class TimestepCritic(TFModelV2):
     """A linear (feed-forward) model."""
 
-    custom_name = "one_hot_tax_period"
+    custom_name = "timestep_critic"
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
         super().__init__(obs_space, action_space, num_outputs, model_config, name)
@@ -659,7 +659,10 @@ class OneHotTaxPeriod(TFModelV2):
 
         self.inputs = [
             tf.keras.layers.Input(
-                shape=(10,), name="tax_period_one_hot"
+                shape=(1,), name="single_one"
+            ),
+            tf.keras.layers.Input(
+                shape=(1000,), name="timestep_one_hot"
             ),
             mask_input,
         ]
@@ -672,18 +675,26 @@ class OneHotTaxPeriod(TFModelV2):
         # Value function is linear
         values = tf.keras.layers.Dense(
             1, activation=tf.keras.activations.linear, name="values"
-        )(self.inputs[0])
+        )(self.inputs[1])
 
         self.base_model = tf.keras.Model(self.inputs, [logits, values])
         self.register_variables(self.base_model.variables)
 
     def forward(self, input_dict, state, seq_lens):
-        unrounded_period = input_dict["obs"]["time"] * 10
-        tax_period = tf.cast(tf.math.floor(unrounded_period), tf.int32)
-        tax_period_one_hot = tf.one_hot(tax_period, depth=10)
+
+        batch_size = tf.shape(input_dict["obs_flat"])[0]
+        single_one = tf.ones((batch_size, 1))
+
+        timestep = input_dict["obs"]["time"] * 1000
+        int_timestep = tf.cast(timestep, tf.int32)
+        timestep_one_hot = tf.one_hot(int_timestep, depth=1000)
 
         model_out, self._value_out = self.base_model(
-            [tax_period_one_hot, input_dict["obs"][self.MASK_NAME]]
+            [
+                single_one,
+                timestep_one_hot,
+                input_dict["obs"][self.MASK_NAME]
+            ]
         )
         return model_out, state
 
@@ -691,7 +702,7 @@ class OneHotTaxPeriod(TFModelV2):
         return tf.reshape(self._value_out, [-1])
 
 
-ModelCatalog.register_custom_model(OneHotTaxPeriod.custom_name, OneHotTaxPeriod)
+ModelCatalog.register_custom_model(TimestepCritic.custom_name, TimestepCritic)
 
 
 class Octopus(TFModelV2):

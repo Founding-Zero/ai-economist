@@ -98,7 +98,7 @@ planner_policy:
   lr: 0.01
   lr_schedule: null
   model:
-    custom_model: one_hot_tax_period
+    custom_model: timestep_critic
     custom_options: {}
     max_seq_len: 25
   use_gae: true
