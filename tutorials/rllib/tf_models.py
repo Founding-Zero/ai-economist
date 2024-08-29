@@ -450,6 +450,7 @@ class FixedObsKerasConvLSTM(RecurrentTFModelV2):
 
             # Apply convolution to the spatial inputs
             if use_conv:
+                raise NotImplementedError
                 map_embedding = tf.keras.layers.Embedding(
                     input_emb_vocab, emb_dim, name="embedding" + tag
                 )
@@ -494,7 +495,12 @@ class FixedObsKerasConvLSTM(RecurrentTFModelV2):
 
             # No spatial inputs provided -- skip any conv steps
             else:
-                dense = tf.ones_like(non_conv_inputs)
+                if tag == "_pol":
+                    dense = tf.ones_like(non_conv_inputs)
+                elif tag == "_val":
+                    dense = non_conv_inputs
+                else:
+                    raise NotImplementedError
 
             # Preprocess observation with hidden layers and send to LSTM cell
             for i in range(num_fc):
