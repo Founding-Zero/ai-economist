@@ -687,7 +687,7 @@ class TimestepCritic(TFModelV2):
 
         timestep = input_dict["obs"]["time"] * 1000
         int_timestep = tf.cast(timestep, tf.int32)
-        timestep_one_hot = tf.one_hot(int_timestep, depth=1000)
+        timestep_one_hot = tf.squeeze(tf.one_hot(int_timestep, depth=1000), axis=1)
 
         model_out, self._value_out = self.base_model(
             [
