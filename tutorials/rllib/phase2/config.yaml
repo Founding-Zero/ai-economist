@@ -98,14 +98,8 @@ planner_policy:
   lr: 0.0001
   lr_schedule: null
   model:
-    custom_model: keras_conv_lstm
-    custom_options:
-      fc_dim: 256
-      idx_emb_dim: 4
-      input_emb_vocab: 100
-      lstm_cell_size: 256
-      num_conv: 2
-      num_fc: 2
+    custom_model: one_hot_tax_period
+    custom_options: {}
     max_seq_len: 25
   use_gae: true
   vf_clip_param: 50.0
