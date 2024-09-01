@@ -28,7 +28,8 @@ env:
       tax_annealing_schedule:
       - -100
       - 0.001
-      tax_model: model_wrapper
+      tax_model: fixed-bracket-rates
+      fixed_bracket_rates: [0.66, 0.16, 0.59, 0.72, 0.07, 0.11, 0.48]
       usd_scaling: 1000
   dense_log_frequency: 20
   energy_cost: 0.21
