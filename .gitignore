@@ -5,6 +5,9 @@
 # C extensions
 *.so
 
+*.lz4
+wandb/
+
 # Distribution / packaging
 .Python
 build/
