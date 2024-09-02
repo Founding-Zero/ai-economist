@@ -128,7 +128,7 @@ trainer:
   num_workers: 15
   observation_filter: NoFilter
   rollout_fragment_length: 200
-  seed: 13
+  seed: 42
   sgd_minibatch_size: 1500
   shuffle_sequences: true
   tf_session_args:
