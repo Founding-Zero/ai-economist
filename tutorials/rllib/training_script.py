@@ -307,7 +307,7 @@ if __name__ == "__main__":
     # Create a trainer object
     trainer = build_trainer(run_config)
 
-    wandb.init(project="GTB")
+    wandb.init(project="GTB", config=run_config)
 
     # Set up directories for logging and saving. Restore if this has already been
     # done (indicating that we're restarting a crashed run). Or, if appropriate,
