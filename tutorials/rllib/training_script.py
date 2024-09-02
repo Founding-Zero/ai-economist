@@ -32,9 +32,13 @@ def process_args():
     parser.add_argument(
         "--run-dir", type=str, help="Path to the directory for this run."
     )
+    parser.add_argument(
+        "--seed", type=int, help="start seed"
+    )
 
     args = parser.parse_args()
     run_directory = args.run_dir
+    seed = args.seed
 
     config_path = os.path.join(args.run_dir, "config.yaml")
     assert os.path.isdir(args.run_dir)
@@ -42,6 +46,9 @@ def process_args():
 
     with open(config_path, "r") as f:
         run_configuration = yaml.safe_load(f)
+
+    trainer_config = run_configuration.get("trainer")
+    trainer_config.update({"seed": seed})
 
     return run_directory, run_configuration
 
@@ -307,7 +314,6 @@ if __name__ == "__main__":
     # Create a trainer object
     trainer = build_trainer(run_config)
 
-    wandb.init(project="GTB", config=run_config)
 
     # Set up directories for logging and saving. Restore if this has already been
     # done (indicating that we're restarting a crashed run). Or, if appropriate,
@@ -326,6 +332,8 @@ if __name__ == "__main__":
     dense_log_frequency = run_config["env"].get("dense_log_frequency", 0)
     ckpt_frequency = run_config["general"].get("ckpt_frequency_steps", 0)
     global_step = int(step_last_ckpt)
+
+    wandb.init(project="GTB", config=run_config)
 
     while num_parallel_episodes_done < run_config["general"]["episodes"]:
 
